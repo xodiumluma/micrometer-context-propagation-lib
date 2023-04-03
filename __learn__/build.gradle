@@ -1,0 +1,36 @@
+buildscript {
+  dependencyLocking {
+    lockAllConfigurations()
+  }
+
+  repositories {
+    mavenCentral()
+    gradlePluginPortal()
+  }
+
+  dependencies {
+    classpath 'gradle.plugin.com.hierynomus.gradle.plugins:license-gradle-plugin:0.16.1'
+    classpath 'com.netflix.nebula:nebula-release-plugin:16.1.0'
+    classpath 'com.netflix.nebula:nebula-publishing-plugin:20.1.0'
+    classpath 'com.netflix.nebula:nebula-project-plugin:10.1.2'
+    classpath 'io.spring.nohttp:nohttp-gradle:0.0.11'
+    classpath 'io.github.gradle-nexus:publish-plugin:1.3.0'
+    classpath 'io.spring.javaformat:spring-javaformat-gradle-plugin:0.0.38'
+
+    constraints {
+      classpath('org.ow2.asm:asm:7.3.1') {
+        because 'Flow with latest JDK'
+      }
+    }
+  }
+
+  configurations.classpath.resolutionStrategy.cacheDynamicVersionsFor 0, 'minutes'
+
+  // @todo: get rid of this hack (https://github.com/nebula-plugins/nebula-release-plugin/issues/213)
+  def releaseStage = findProperty('release.stage')
+  apply plugin: 'nebula.release'
+  release.defaultVersionStrategy = nebula.plugin.release.git.opionion.Strategies.SNAPSHOT
+
+  apply plugin: 'io.github.gradle-nexus.publish-plugin'
+  apply from: 'dependencies.gradle'
+}
