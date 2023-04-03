@@ -49,4 +49,28 @@ subprojects {
   apply plugin: 'com.github.hierynomus.license'
   apply plugin: 'checkstyle'
   apply plugin: 'io.spring.nohttp'
+
+  java {
+    // not publishing Gradle metadata
+    // just use this method to register optional dependency
+    // Normally we define features for sets of optional dependencies
+    // take for example 'dropwizard' and 'reactor'
+    // For libraries that publish Gradle metadata, users can
+    // use feature names in dependency blocks rather than 
+    // being aware (granularly) of all the optional dependencies 
+    // But as per above - we're not publishing Gradle metadata
+    registerFeature('optional') {
+      usingSourceSet(sourceSets.main)
+    }
+  }
+}
+
+// add annotations here
+// otherwise it's very inconvenient to expose optional annotations
+// downstream (which we don't do) 
+// Since we don't expose the annotations, we have to add them to every project
+// JSR-305 used only for optional meta-annotations
+dependencies {
+  optionalApi 'com.google.code.findbugs:jsr305:latest-release'
+  checkstyle('io.spring.javaformat:spring-javaformat-checkstyle:latest-release')
 }
