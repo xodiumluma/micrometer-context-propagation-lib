@@ -104,4 +104,45 @@ subprojects {
       }
     }
   }
+
+  normalization {
+    runtimeClasspath {
+      metaInf {
+        [
+          'Build-Date',
+          'Build-Date-UTC',
+          'Built-By',
+          'Built-OS',
+          'Build-Host',
+          'Build-Job',
+          'Build-Number',
+          'Build-Id',
+          'Change',
+          'Full-Change',
+          'Branch',
+          'Module-Origin',
+          'Created-By',
+          'Build-Java-Version'
+        ].each {
+          ignoreAttribute it
+          ignoreProperty it
+        }
+      }
+    }
+  }
+
+  //noinspection GroovyAssignabilityCheck
+  test {
+    // set for test JVM(s)
+    maxHeapSize = '1500m'
+
+    useJUnitPlatform {
+      excludeTags 'docker'
+    }
+
+    retry {
+      maxFailures = 5
+      maxRetries = 3
+    }
+  }
 }
