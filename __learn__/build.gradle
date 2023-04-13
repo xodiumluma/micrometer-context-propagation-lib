@@ -145,4 +145,8 @@ subprojects {
       maxRetries = 3
     }
   }
+
+  project.tasks.withType(Test) { Test testTask ->
+    testTask.testLogging.exceptionFormat = 'full'
+  }
 }
