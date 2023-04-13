@@ -63,14 +63,45 @@ subprojects {
       usingSourceSet(sourceSets.main)
     }
   }
-}
 
-// add annotations here
-// otherwise it's very inconvenient to expose optional annotations
-// downstream (which we don't do) 
-// Since we don't expose the annotations, we have to add them to every project
-// JSR-305 used only for optional meta-annotations
-dependencies {
-  optionalApi 'com.google.code.findbugs:jsr305:latest-release'
-  checkstyle('io.spring.javaformat:spring-javaformat-checkstyle:latest-release')
+  // add annotations here
+  // otherwise it's very inconvenient to expose optional annotations
+  // downstream (which we don't do) 
+  // Since we don't expose the annotations, we have to add them to every project
+  // JSR-305 used only for optional meta-annotations
+  dependencies {
+    optionalApi 'com.google.code.findbugs:jsr305:latest-release'
+    checkstyle('io.spring.javaformat:spring-javaformat-checkstyle:latest-release')
+  }
+
+  tasks {
+    compileJava {
+      options.encoding = 'UTF-8'
+      options.compilerArgs << '-Xlint:unchecked' << '-Xlint:deprecation'
+
+      sourceCompatibility = JavaVersion.VERSION_1_8
+      targetCompatibility = JavaVersion.VERSION_1_8
+
+      // make sure that we stay on Java 8!
+      if (JavaVersion.current().isJava9Compatible()) {
+        options.release = 8
+      }
+    }
+    compileTestJava {
+      options.encoding = 'UTF-8'
+      options.compilerArgs << '-Xlint:unchecked' << '-Xlint:deprecation'
+      sourceCompatibility = JavaVersion.VERSION_1_8
+      targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    javadoc {
+      configure(options) {
+        tags(
+          'apiNote:a:API Note:',
+          'implSpec:a:Implementation Requirements:',
+          'implNote:a:Implementation Note:'
+        )
+      }
+    }
+  }
 }
