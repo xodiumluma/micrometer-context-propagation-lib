@@ -149,4 +149,17 @@ subprojects {
   project.tasks.withType(Test) { Test testTask ->
     testTask.testLogging.exceptionFormat = 'full'
   }
+
+  license {
+    header rootProject.file('gradle/licenseHeader.txt')
+    strictCheck true
+    mapping {
+      kt = 'SLASHSTAR_STYLE'
+    }
+    sourceSets = project.sourceSets
+
+    ext.year = Calendar.getInstance().get(Calendar.YEAR)
+    skipExistingHeaders = true
+    exclude '**/*.json' // can't put in comments
+  }
 }
