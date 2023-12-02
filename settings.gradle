@@ -5,9 +5,9 @@ pluginManagement {
 }
 
 plugins {
-	id 'com.gradle.enterprise' version '3.12.6'
-	id 'io.spring.ge.conventions' version '0.0.13'
-	id 'org.gradle.toolchains.foojay-resolver-convention' version '0.4.0'
+	id 'com.gradle.enterprise' version '3.15.1'
+	id 'io.spring.ge.conventions' version '0.0.14'
+	id 'org.gradle.toolchains.foojay-resolver-convention' version '0.7.0'
 }
 
 rootProject.name = 'context-propagation'
@@ -21,4 +21,4 @@ gradleEnterprise {
 	server = 'https://ge.micrometer.io'
 }
 
-include 'context-propagation'
+include 'context-propagation', 'docs'

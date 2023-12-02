@@ -17,6 +17,7 @@ package io.micrometer.context;
 
 import java.util.Collections;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -38,22 +39,27 @@ import static org.assertj.core.api.BDDAssertions.then;
 class ContextWrappingTests {
 
     private final ContextRegistry registry = new ContextRegistry()
-        .registerThreadLocalAccessor(new ObservationThreadLocalAccessor());
+        .registerThreadLocalAccessor(new StringThreadLocalAccessor());
+
+    private final ContextSnapshotFactory defaultSnapshotFactory = ContextSnapshotFactory.builder()
+        .contextRegistry(registry)
+        .clearMissing(false)
+        .build();
 
     @AfterEach
     void clear() {
-        ObservationThreadLocalHolder.reset();
+        StringThreadLocalHolder.reset();
     }
 
     @Test
-    void should_instrument_runnable() throws InterruptedException {
-        ObservationThreadLocalHolder.setValue("hello");
+    void should_instrument_runnable() throws InterruptedException, TimeoutException {
+        StringThreadLocalHolder.setValue("hello");
         AtomicReference<String> valueInNewThread = new AtomicReference<>();
         Runnable runnable = runnable(valueInNewThread);
         runInNewThread(runnable);
         then(valueInNewThread.get()).as("By default thread local information should not be propagated").isNull();
 
-        runInNewThread(ContextSnapshot.captureAllUsing(key -> true, this.registry).wrap(runnable));
+        runInNewThread(defaultSnapshotFactory.captureAll().wrap(runnable));
 
         then(valueInNewThread.get()).as("With context container the thread local information should be propagated")
             .isEqualTo("hello");
@@ -61,31 +67,30 @@ class ContextWrappingTests {
 
     @Test
     void should_instrument_callable() throws ExecutionException, InterruptedException, TimeoutException {
-        ObservationThreadLocalHolder.setValue("hello");
+        StringThreadLocalHolder.setValue("hello");
         AtomicReference<String> valueInNewThread = new AtomicReference<>();
         Callable<String> callable = () -> {
-            valueInNewThread.set(ObservationThreadLocalHolder.getValue());
+            valueInNewThread.set(StringThreadLocalHolder.getValue());
             return "foo";
         };
         runInNewThread(callable);
         then(valueInNewThread.get()).as("By default thread local information should not be propagated").isNull();
 
-        runInNewThread(ContextSnapshot.captureAllUsing(key -> true, this.registry).wrap(callable));
+        runInNewThread(defaultSnapshotFactory.captureAll().wrap(callable));
 
         then(valueInNewThread.get()).as("With context container the thread local information should be propagated")
             .isEqualTo("hello");
     }
 
     @Test
-    void should_instrument_executor() throws InterruptedException {
-        ObservationThreadLocalHolder.setValue("hello");
+    void should_instrument_executor() throws InterruptedException, TimeoutException {
+        StringThreadLocalHolder.setValue("hello");
         AtomicReference<String> valueInNewThread = new AtomicReference<>();
         Executor executor = command -> new Thread(command).start();
         runInNewThread(executor, valueInNewThread);
         then(valueInNewThread.get()).as("By default thread local information should not be propagated").isNull();
 
-        runInNewThread(ContextSnapshot.captureAllUsing(key -> true, this.registry).wrapExecutor(executor),
-                valueInNewThread);
+        runInNewThread(defaultSnapshotFactory.captureAll().wrapExecutor(executor), valueInNewThread);
 
         then(valueInNewThread.get()).as("With context container the thread local information should be propagated")
             .isEqualTo("hello");
@@ -95,15 +100,13 @@ class ContextWrappingTests {
     void should_instrument_executor_service() throws InterruptedException, ExecutionException, TimeoutException {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         try {
-            ObservationThreadLocalHolder.setValue("hello");
+            StringThreadLocalHolder.setValue("hello");
             AtomicReference<String> valueInNewThread = new AtomicReference<>();
             runInNewThread(executorService, valueInNewThread,
                     atomic -> then(atomic.get()).as("By default thread local information should not be propagated")
                         .isNull());
 
-            runInNewThread(
-                    ContextExecutorService
-                        .wrap(executorService, () -> ContextSnapshot.captureAllUsing(key -> true, this.registry)),
+            runInNewThread(ContextExecutorService.wrap(executorService, defaultSnapshotFactory::captureAll),
                     valueInNewThread,
                     atomic -> then(atomic.get())
                         .as("With context container the thread local information should be propagated")
@@ -119,16 +122,14 @@ class ContextWrappingTests {
             throws InterruptedException, ExecutionException, TimeoutException {
         ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
         try {
-            ObservationThreadLocalHolder.setValue("hello at time of creation of the executor");
+            StringThreadLocalHolder.setValue("hello at time of creation of the executor");
             AtomicReference<String> valueInNewThread = new AtomicReference<>();
             runInNewThread(executorService, valueInNewThread,
                     atomic -> then(atomic.get()).as("By default thread local information should not be propagated")
                         .isNull());
 
-            ObservationThreadLocalHolder.setValue("hello at time of creation of the executor");
-            runInNewThread(
-                    ContextExecutorService
-                        .wrap(executorService, () -> ContextSnapshot.captureAllUsing(key -> true, this.registry)),
+            StringThreadLocalHolder.setValue("hello at time of creation of the executor");
+            runInNewThread(ContextExecutorService.wrap(executorService, defaultSnapshotFactory::captureAll),
                     valueInNewThread,
                     atomic -> then(atomic.get())
                         .as("With context container the thread local information should be propagated")
@@ -139,10 +140,12 @@ class ContextWrappingTests {
         }
     }
 
-    private void runInNewThread(Runnable runnable) throws InterruptedException {
-        Thread thread = new Thread(runnable);
+    private void runInNewThread(Runnable runnable) throws InterruptedException, TimeoutException {
+        CountDownLatch latch = new CountDownLatch(1);
+        Thread thread = new Thread(countDownWhenDone(runnable, latch));
         thread.start();
-        Thread.sleep(5);
+
+        throwIfTimesOut(latch);
     }
 
     private void runInNewThread(Callable<?> callable)
@@ -157,20 +160,36 @@ class ContextWrappingTests {
     }
 
     private void runInNewThread(Executor executor, AtomicReference<String> valueInNewThread)
-            throws InterruptedException {
-        executor.execute(runnable(valueInNewThread));
-        Thread.sleep(5);
+            throws InterruptedException, TimeoutException {
+        CountDownLatch latch = new CountDownLatch(1);
+        executor.execute(countDownWhenDone(runnable(valueInNewThread), latch));
+        throwIfTimesOut(latch);
+    }
+
+    private Runnable countDownWhenDone(Runnable runnable, CountDownLatch latch) {
+        return () -> {
+            runnable.run();
+            latch.countDown();
+        };
+    }
+
+    private void throwIfTimesOut(CountDownLatch latch) throws InterruptedException, TimeoutException {
+        if (!latch.await(5, TimeUnit.MILLISECONDS)) {
+            throw new TimeoutException("Waiting for executed task timed out");
+        }
     }
 
     private void runInNewThread(ExecutorService executor, AtomicReference<String> valueInNewThread,
             Consumer<AtomicReference<String>> assertion)
             throws InterruptedException, ExecutionException, TimeoutException {
 
-        ObservationThreadLocalHolder.setValue("hello"); // IMPORTANT: We are setting the
-                                                        // thread local value as late as
-                                                        // possible
-        executor.execute(runnable(valueInNewThread));
-        Thread.sleep(5);
+        StringThreadLocalHolder.setValue("hello"); // IMPORTANT: We are setting the
+                                                   // thread local value as late as
+                                                   // possible
+
+        CountDownLatch latch = new CountDownLatch(1);
+        executor.execute(countDownWhenDone(runnable(valueInNewThread), latch));
+        throwIfTimesOut(latch);
         assertion.accept(valueInNewThread);
 
         executor.submit(runnable(valueInNewThread)).get(5, TimeUnit.MILLISECONDS);
@@ -215,12 +234,12 @@ class ContextWrappingTests {
     }
 
     private Runnable runnable(AtomicReference<String> valueInNewThread) {
-        return () -> valueInNewThread.set(ObservationThreadLocalHolder.getValue());
+        return () -> valueInNewThread.set(StringThreadLocalHolder.getValue());
     }
 
     private Callable<Object> callable(AtomicReference<String> valueInNewThread) {
         return () -> {
-            valueInNewThread.set(ObservationThreadLocalHolder.getValue());
+            valueInNewThread.set(StringThreadLocalHolder.getValue());
             return "foo";
         };
     }
